@@ -1,3 +1,5 @@
+import fs from "node:fs";
+import path from "node:path";
 import { Boom } from "@hapi/boom";
 import makeWASocket, {
   Browsers,
@@ -32,6 +34,7 @@ export class WhatsApp {
   private stopping = false;
   private retry = 0;
   private pairingRequested = false;
+  private checkedAuth = false;
   private readonly sentIds = new Set<string>();
   private readonly seenIds = new Set<string>();
   onMessage: (m: IncomingMessage) => void = () => undefined;
@@ -96,7 +99,32 @@ export class WhatsApp {
     return { selfUsers, ownerNumber: config.ownerNumber || undefined };
   }
 
+  /**
+   * Baileys' creds.registered is a legacy flag that stays false for linked devices. A really linked
+   * login has creds.account (set on pair-success). requestPairingCode() saves a placeholder `me`
+   * without it, and a later reconnect with that placeholder is answered with 401 "logged out".
+   * So anything on disk without `account` is the debris of an unfinished link, never a login.
+   */
+  private wipeUnlinkedAuth(): void {
+    const file = path.join(config.authDir, "creds.json");
+    if (!fs.existsSync(file)) return;
+    let linked = false;
+    try {
+      linked = !!(JSON.parse(fs.readFileSync(file, "utf8")) as { account?: unknown }).account;
+    } catch {
+      /* corrupt: treat as unlinked */
+    }
+    if (!linked) {
+      log.info("Removing the leftovers of an unfinished WhatsApp link; starting a fresh one.");
+      fs.rmSync(config.authDir, { recursive: true, force: true });
+    }
+  }
+
   private async connect(): Promise<void> {
+    if (!this.checkedAuth) {
+      this.checkedAuth = true;
+      this.wipeUnlinkedAuth();
+    }
     const { state, saveCreds } = await useMultiFileAuthState(config.authDir);
     let version: [number, number, number] | undefined;
     try {
@@ -110,7 +138,8 @@ export class WhatsApp {
       ...(version ? { version } : {}),
       auth: { creds: state.creds, keys: makeCacheableSignalKeyStore(state.keys, logger) },
       logger,
-      browser: Browsers.macOS("Desktop"),
+      // "Chrome": pairing codes are only accepted from browser-type companions
+      browser: Browsers.macOS("Chrome"),
       markOnlineOnConnect: false,
       syncFullHistory: false,
       getMessage: async () => undefined,
@@ -122,13 +151,16 @@ export class WhatsApp {
     sock.ev.on("connection.update", (u) => {
       const { connection, lastDisconnect, qr } = u;
       if (qr) {
-        if (config.pairingNumber && !state.creds.registered) {
+        if (config.pairingNumber && !state.creds.account) {
           if (!this.pairingRequested) {
             this.pairingRequested = true;
             sock
               .requestPairingCode(config.pairingNumber)
               .then((code) => {
-                log.info(`\nPairing code: ${code}\nWhatsApp > Settings > Linked devices > Link a device > "Link with phone number instead".\n`);
+                const shown = `${code.slice(0, 4)}-${code.slice(4)}`;
+                log.info(
+                  `\n==============================================\n  PAIRING CODE:  ${shown}\n\n  On your phone (${config.pairingNumber}): WhatsApp > Settings >\n  Linked devices > Link a device >\n  "Link with phone number instead" > type the code.\n  You have about 2 minutes; a new code follows if it expires.\n==============================================\n`,
+                );
               })
               .catch((err) => log.error("could not get a pairing code", err as Error));
           }
@@ -148,8 +180,16 @@ export class WhatsApp {
         this.connected = false;
         const code = (lastDisconnect?.error as Boom | undefined)?.output?.statusCode;
         if (this.stopping) return;
+        if (!state.creds.account && code !== DisconnectReason.restartRequired) {
+          // The link was never completed (code expired, QR timed out, ...). Start over with a clean slate.
+          log.warn(`Linking did not finish (code ${code ?? "?"}). Starting a new attempt...`);
+          fs.rmSync(config.authDir, { recursive: true, force: true });
+          this.pairingRequested = false;
+          void sleep(1500).then(() => this.connect().catch((err) => log.error("reconnect failed", err as Error)));
+          return;
+        }
         if (code === DisconnectReason.loggedOut) {
-          log.error(`WhatsApp logged this device out. Delete ${config.authDir} and start again to re-link.`);
+          log.error(`WhatsApp logged this device out (removed under Linked devices?). Delete ${config.authDir} and re-link.`);
           process.exit(2); // run.bat does not restart on 2
         }
         const delay = code === DisconnectReason.restartRequired ? 0 : Math.min(30_000, 2_000 * 2 ** this.retry++);

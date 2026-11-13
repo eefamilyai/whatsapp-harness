@@ -30,6 +30,10 @@ if (process.argv.includes("--link")) {
     }, 6000);
   };
   log.info("Link mode: waiting for you to scan the QR code / enter the pairing code in WhatsApp...");
+  setTimeout(() => {
+    log.error("Gave up after 15 minutes without a link. Run install.bat again to retry.");
+    process.exit(1);
+  }, 15 * 60_000).unref();
   await wa.start();
 } else {
   await run();

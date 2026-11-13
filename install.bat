@@ -4,7 +4,7 @@ title WhatsApp assistant - install / update
 rem ====================================================================================
 rem  Installs (or updates) the WhatsApp assistant on a Windows machine.
 rem
-rem    install.bat [DEEPSEEK_API_KEY] [/dir:C:\path] [/nolink] [/notask]
+rem    install.bat [DEEPSEEK_API_KEY] [/dir:C:\path] [/nolink] [/notask] [/relink]
 rem
 rem  - installs Node.js (portable, no admin) if the machine has none or an old one
 rem  - downloads the latest GitHub release, keeps your .env and data\ on updates
@@ -17,6 +17,7 @@ set "REPO=eefamilyai/whatsapp-harness"
 set "DIR=%USERPROFILE%\whatsapp-harness"
 set "NOLINK="
 set "NOTASK="
+set "RELINK="
 set "KEY=%WAH_KEY%"
 
 :args
@@ -28,6 +29,8 @@ if /i "%A:~0,5%"=="/dir:" (
   set "NOLINK=1"
 ) else if /i "%A%"=="/notask" (
   set "NOTASK=1"
+) else if /i "%A%"=="/relink" (
+  set "RELINK=1"
 ) else (
   set "KEY=%A%"
 )
@@ -130,15 +133,19 @@ if not defined HAVEKEY (
 )
 
 if defined NOLINK goto skiplink
+if defined RELINK if exist "data\auth" rmdir /s /q "data\auth"
 if exist "data\auth\creds.json" (
-  echo   WhatsApp is already linked.
-  goto skiplink
+  findstr /r /c:"account.: *{" "data\auth\creds.json" >nul 2>&1
+  if not errorlevel 1 (
+    echo   WhatsApp is already linked.
+    goto skiplink
+  )
 )
 echo.
 echo   Optional: your WhatsApp number with country code, digits only ^(e.g. 6591234567^).
 echo   Enter it to link with an 8-character pairing code instead of a QR code.
 set "PAIR="
-set /p "PAIR=  Number ^(or just Enter for a QR code^): "
+set /p "PAIR=  Number (or just Enter for a QR code): "
 if defined PAIR (
   set "WAH_PAIR=%PAIR%"
   call :setenv PAIRING_NUMBER WAH_PAIR
