@@ -25,7 +25,7 @@ function walk(dir) {
 
 if (!fs.existsSync(path.join(root, "dist", "index.js"))) throw new Error("dist/ is missing: run npm run build first");
 walk("dist");
-for (const f of ["package.json", "package-lock.json", ".env.example", "run.bat", "install.bat", "README.md", path.join("deploy", "whatsapp-harness.service")]) add(f);
+for (const f of ["package.json", "package-lock.json", ".env.example", "run.bat", "stop.bat", "install.bat", "README.md", path.join("deploy", "whatsapp-harness.service")]) add(f);
 
 const zip = zipSync(files);
 fs.writeFileSync(path.join(out, "whatsapp-harness.zip"), zip);

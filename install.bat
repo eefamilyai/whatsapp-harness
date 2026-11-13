@@ -61,7 +61,7 @@ if exist "%NODE_ZIPDIR%" rmdir /s /q "%NODE_ZIPDIR%"
 mkdir "%NODE_ZIPDIR%"
 set "WAH_ARCH=%ARCH%"
 set "WAH_NODE_OUT=%NODE_ZIPDIR%"
-%PS% "%TLS% $v=(Invoke-RestMethod 'https://nodejs.org/dist/index.json' | Where-Object { $_.lts } | Select-Object -First 1).version; Write-Host ('      Node ' + $v); Invoke-WebRequest -UseBasicParsing -Uri ('https://nodejs.org/dist/' + $v + '/node-' + $v + '-win-' + $env:WAH_ARCH + '.zip') -OutFile (Join-Path $env:WAH_NODE_OUT 'node.zip'); Expand-Archive -Force -LiteralPath (Join-Path $env:WAH_NODE_OUT 'node.zip') -DestinationPath $env:WAH_NODE_OUT; $d=Get-ChildItem $env:WAH_NODE_OUT -Directory | Select-Object -First 1; if (Test-Path (Join-Path $env:DIR 'node')) { Remove-Item -Recurse -Force (Join-Path $env:DIR 'node') }; New-Item -ItemType Directory -Force $env:DIR | Out-Null; Move-Item $d.FullName (Join-Path $env:DIR 'node')"
+%PS% "%TLS% $j=ConvertFrom-Json (Invoke-WebRequest -UseBasicParsing 'https://nodejs.org/dist/index.json').Content; $v=$null; foreach ($e in $j) { if ($e.lts) { $v=$e.version; break } }; Write-Host ('      Node ' + $v); Invoke-WebRequest -UseBasicParsing -Uri ('https://nodejs.org/dist/' + $v + '/node-' + $v + '-win-' + $env:WAH_ARCH + '.zip') -OutFile (Join-Path $env:WAH_NODE_OUT 'node.zip'); Expand-Archive -Force -LiteralPath (Join-Path $env:WAH_NODE_OUT 'node.zip') -DestinationPath $env:WAH_NODE_OUT; $d=Get-ChildItem $env:WAH_NODE_OUT -Directory | Select-Object -First 1; if (Test-Path (Join-Path $env:DIR 'node')) { Remove-Item -Recurse -Force (Join-Path $env:DIR 'node') }; New-Item -ItemType Directory -Force $env:DIR | Out-Null; Move-Item $d.FullName (Join-Path $env:DIR 'node')"
 if errorlevel 1 goto fail_node
 if not exist "%DIR%\node\node.exe" goto fail_node
 rmdir /s /q "%NODE_ZIPDIR%" 2>nul
@@ -163,7 +163,7 @@ echo [6/6] Registering the startup task...
 set "WAH_RUN=%DIR%\run.bat"
 schtasks /create /tn "%TASK%" /sc onlogon /rl limited /f /tr "powershell.exe -NoProfile -WindowStyle Hidden -Command \"Start-Process -WindowStyle Hidden -FilePath '%DIR%\run.bat'\"" >nul
 if errorlevel 1 (
-  echo   Could not create the scheduled task. Start it by hand with: %DIR%\run.bat
+  call :startup_fallback
 ) else (
   schtasks /run /tn "%TASK%" >nul
   echo   Started. It will start again at every logon and restart itself if it crashes.
@@ -177,9 +177,22 @@ echo  Done. Open WhatsApp ^> "Message yourself" and send: /help
 echo.
 echo  Logs:    type "%DIR%\data\bot.log"
 echo  Update:  "%DIR%\install.bat"
-echo  Stop:    schtasks /end /tn %TASK%
-echo  Remove:  schtasks /delete /tn %TASK% /f   ^(then delete %DIR%^)
+echo  Stop:    "%DIR%\stop.bat"        Start: "%DIR%\run.bat"
+echo  Remove:  stop.bat, then delete the "%TASK%" startup entry ^(see above^) and %DIR%
 echo ================================================================
+exit /b 0
+
+rem ---- no admin rights, so no logon task: use a launcher in the Startup folder instead ----
+:startup_fallback
+set "STARTUP=%APPDATA%\Microsoft\Windows\Start Menu\Programs\Startup"
+> "%STARTUP%\%TASK%.vbs" echo CreateObject("Wscript.Shell").Run """%DIR%\run.bat""", 0, False
+if errorlevel 1 (
+  echo   Could not set up auto-start. Start it by hand with: %DIR%\run.bat
+  exit /b 0
+)
+wscript //nologo "%STARTUP%\%TASK%.vbs"
+echo   Started. ^(Logon tasks need admin, so it starts from your Startup folder instead: it comes back at every logon.^)
+echo   Startup entry: %STARTUP%\%TASK%.vbs
 exit /b 0
 
 rem ---- helper: :setenv NAME VARNAME  -> sets NAME=<value of %VARNAME%> in .env (adds the line if missing) ----
