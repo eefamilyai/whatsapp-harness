@@ -61,7 +61,7 @@ if exist "%NODE_ZIPDIR%" rmdir /s /q "%NODE_ZIPDIR%"
 mkdir "%NODE_ZIPDIR%"
 set "WAH_ARCH=%ARCH%"
 set "WAH_NODE_OUT=%NODE_ZIPDIR%"
-%PS% "%TLS% $j=ConvertFrom-Json (Invoke-WebRequest -UseBasicParsing 'https://nodejs.org/dist/index.json').Content; $v=$null; foreach ($e in $j) { if ($e.lts) { $v=$e.version; break } }; Write-Host ('      Node ' + $v); Invoke-WebRequest -UseBasicParsing -Uri ('https://nodejs.org/dist/' + $v + '/node-' + $v + '-win-' + $env:WAH_ARCH + '.zip') -OutFile (Join-Path $env:WAH_NODE_OUT 'node.zip'); Expand-Archive -Force -LiteralPath (Join-Path $env:WAH_NODE_OUT 'node.zip') -DestinationPath $env:WAH_NODE_OUT; $d=Get-ChildItem $env:WAH_NODE_OUT -Directory | Select-Object -First 1; if (Test-Path (Join-Path $env:DIR 'node')) { Remove-Item -Recurse -Force (Join-Path $env:DIR 'node') }; New-Item -ItemType Directory -Force $env:DIR | Out-Null; Move-Item $d.FullName (Join-Path $env:DIR 'node')"
+%PS% "%TLS% $j=ConvertFrom-Json (Invoke-WebRequest -UseBasicParsing 'https://nodejs.org/dist/index.json').Content; $v=$null; foreach ($e in $j) { if ($e.lts) { $v=$e.version; break } }; Write-Host ('      Node ' + $v); Invoke-WebRequest -UseBasicParsing -Uri ('https://nodejs.org/dist/' + $v + '/node-' + $v + '-win-' + $env:WAH_ARCH + '.zip') -OutFile (Join-Path $env:WAH_NODE_OUT 'node.zip'); Expand-Archive -Force -LiteralPath (Join-Path $env:WAH_NODE_OUT 'node.zip') -DestinationPath $env:WAH_NODE_OUT; $d=Get-ChildItem $env:WAH_NODE_OUT -Directory | Select-Object -First 1; if (Test-Path (Join-Path $env:DIR 'node')) { Remove-Item -Recurse -Force (Join-Path $env:DIR 'node') }; New-Item -ItemType Directory -Force $env:DIR | Out-Null; Move-Item $d.FullName (Join-Path $env:DIR 'node')" <nul
 if errorlevel 1 goto fail_node
 if not exist "%DIR%\node\node.exe" goto fail_node
 rmdir /s /q "%NODE_ZIPDIR%" 2>nul
@@ -75,7 +75,7 @@ if exist "%DIR%\node\node.exe" (
 rem ---------- 2. stop a running copy, download the release ----------
 echo [2/6] Downloading the latest release...
 set "WAH_DIR=%DIR%"
-%PS% "Get-CimInstance Win32_Process | Where-Object { $_.CommandLine -and $_.CommandLine.Contains($env:WAH_DIR) -and ($_.CommandLine -like '*run.bat*' -or $_.CommandLine -like '*dist\index.js*') } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }" >nul 2>&1
+%PS% "Get-CimInstance Win32_Process | Where-Object { $_.CommandLine -and $_.CommandLine.Contains($env:WAH_DIR) -and ($_.CommandLine -like '*run.bat*' -or $_.CommandLine -like '*dist\index.js*') } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }" >nul 2>&1 <nul
 schtasks /end /tn "%TASK%" >nul 2>&1
 
 set "STAGE=%TEMP%\wah-release"
@@ -83,7 +83,7 @@ if exist "%STAGE%" rmdir /s /q "%STAGE%"
 mkdir "%STAGE%"
 set "WAH_STAGE=%STAGE%"
 set "WAH_URL=https://github.com/%REPO%/releases/latest/download/whatsapp-harness.zip"
-%PS% "%TLS% Invoke-WebRequest -UseBasicParsing -Uri $env:WAH_URL -OutFile (Join-Path $env:WAH_STAGE 'release.zip'); Expand-Archive -Force -LiteralPath (Join-Path $env:WAH_STAGE 'release.zip') -DestinationPath (Join-Path $env:WAH_STAGE 'x')"
+%PS% "%TLS% Invoke-WebRequest -UseBasicParsing -Uri $env:WAH_URL -OutFile (Join-Path $env:WAH_STAGE 'release.zip'); Expand-Archive -Force -LiteralPath (Join-Path $env:WAH_STAGE 'release.zip') -DestinationPath (Join-Path $env:WAH_STAGE 'x')" <nul
 if errorlevel 1 goto fail_download
 if not exist "%STAGE%\x\dist\index.js" goto fail_download
 
@@ -92,14 +92,14 @@ echo [3/6] Installing files...
 if not exist "%DIR%" mkdir "%DIR%"
 if exist "%DIR%\dist" rmdir /s /q "%DIR%\dist"
 if exist "%DIR%\node_modules" rmdir /s /q "%DIR%\node_modules"
-xcopy /e /y /q "%STAGE%\x\*" "%DIR%\" >nul
+xcopy /e /y /q "%STAGE%\x\*" "%DIR%\" >nul <nul
 if errorlevel 1 goto fail_copy
 rmdir /s /q "%STAGE%" 2>nul
 
 rem ---------- 4. dependencies ----------
 echo [4/6] Installing dependencies ^(1-2 minutes^)...
 pushd "%DIR%"
-call npm ci --omit=dev --no-audit --no-fund --loglevel=error
+call npm ci --omit=dev --no-audit --no-fund --loglevel=error <nul
 if errorlevel 1 (
   popd
   goto fail_npm
@@ -186,7 +186,7 @@ rem ---- no admin rights, so no logon task: use a launcher in the Startup folder
 :startup_fallback
 set "STARTUP=%APPDATA%\Microsoft\Windows\Start Menu\Programs\Startup"
 > "%STARTUP%\%TASK%.vbs" echo CreateObject("Wscript.Shell").Run """%DIR%\run.bat""", 0, False
-if errorlevel 1 (
+if not exist "%STARTUP%\%TASK%.vbs" (
   echo   Could not set up auto-start. Start it by hand with: %DIR%\run.bat
   exit /b 0
 )
@@ -199,7 +199,7 @@ rem ---- helper: :setenv NAME VARNAME  -> sets NAME=<value of %VARNAME%> in .env
 :setenv
 set "WAH_NAME=%~1"
 set "WAH_VAR=%~2"
-%PS% "$n=$env:WAH_NAME; $v=[Environment]::GetEnvironmentVariable($env:WAH_VAR); $f=$env:WAH_ENV; $found=$false; $out=foreach($l in Get-Content $f){ if($l -like ($n+'=*')){ $found=$true; $n+'='+$v } else { $l } }; if(-not $found){ $out=@($out)+($n+'='+$v) }; [IO.File]::WriteAllLines($f,[string[]]$out)"
+%PS% "$n=$env:WAH_NAME; $v=[Environment]::GetEnvironmentVariable($env:WAH_VAR); $f=$env:WAH_ENV; $found=$false; $out=foreach($l in Get-Content $f){ if($l -like ($n+'=*')){ $found=$true; $n+'='+$v } else { $l } }; if(-not $found){ $out=@($out)+($n+'='+$v) }; [IO.File]::WriteAllLines($f,[string[]]$out)" <nul
 exit /b 0
 
 :fail_node
