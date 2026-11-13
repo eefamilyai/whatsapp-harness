@@ -1,0 +1,18 @@
+# systemd user service. Install on the server:
+#   mkdir -p ~/.config/systemd/user && cp deploy/whatsapp-harness.service ~/.config/systemd/user/
+#   systemctl --user daemon-reload && systemctl --user enable --now whatsapp-harness
+#   loginctl enable-linger $USER        # keep it running when you are logged out
+#   journalctl --user -u whatsapp-harness -f
+[Unit]
+Description=WhatsApp assistant (Baileys + LLM)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+WorkingDirectory=%h/whatsapp-harness
+ExecStart=/usr/bin/env node dist/index.js
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=default.target
